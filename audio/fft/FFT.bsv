@@ -130,9 +130,50 @@ module mkCombinationalFFT (FFT);
 
 endmodule
 
+module mkLinearFFT (FFT);
+    TwiddleTable twiddles = genTwiddles();
+
+    function Vector#(FFT_POINTS, ComplexSample) stage_f(Bit#(TLog#(FFT_LOG_POINTS)) stage, Vector#(FFT_POINTS, ComplexSample) stage_in);
+        return stage_ft(twiddles, stage, stage_in);
+    endfunction
+
+    FIFO#(Vector#(FFT_POINTS, ComplexSample)) inputFIFO  <- mkFIFO(); 
+    FIFO#(Vector#(FFT_POINTS, ComplexSample)) outputFIFO <- mkFIFO(); 
+    Vector#(TAdd#(1, FFT_LOG_POINTS), Reg#(Maybe#(Vector#(FFT_POINTS, ComplexSample)))) stage_data <- replicateM(mkRegU);
+
+    rule linear_fft;
+        // Field `notEmpty' is not in the type `FIFO::FIFO' which was derived for this expression
+        // if (inputFIFO.notEmpty) begin
+            stage_data[0] <= tagged Valid inputFIFO.first();
+            inputFIFO.deq();
+        // end else begin
+        //     stage_data[0] <= tagged Invalid;
+        // end
+        
+        for (Integer stage = 0; stage < valueOf(FFT_LOG_POINTS); stage = stage+1) begin
+            case (stage_data[stage]) matches
+                tagged Invalid: stage_data[stage+1] <= tagged Invalid;
+                tagged Valid .x: stage_data[stage+1] <= tagged Valid stage_f(fromInteger(stage), x);
+            endcase
+        end
+
+        case (stage_data[valueOf(FFT_LOG_POINTS)]) matches
+            tagged Valid .x: outputFIFO.enq(x);
+        endcase
+    endrule
+
+    interface Put request;
+        method Action put(Vector#(FFT_POINTS, ComplexSample) x);
+            inputFIFO.enq(bitReverse(x));
+        endmethod
+    endinterface
+
+    interface Get response = toGet(outputFIFO);
+endmodule
+
 // Wrapper around The FFT module we actually want to use
 module mkFFT (FFT);
-    FFT fft <- mkCombinationalFFT();
+    FFT fft <- mkLinearFFT();
     
     interface Put request = fft.request;
     interface Get response = fft.response;
@@ -166,4 +207,3 @@ module mkIFFT (FFT);
     interface Get response = toGet(outfifo);
 
 endmodule
-
