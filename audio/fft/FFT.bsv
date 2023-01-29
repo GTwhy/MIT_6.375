@@ -1,4 +1,3 @@
-
 import ClientServer::*;
 import Complex::*;
 import FIFO::*;
@@ -7,16 +6,14 @@ import GetPut::*;
 import Real::*;
 import Vector::*;
 
-import AudioProcessorTypes::*;
-
 typedef Server#(
-    Vector#(FFT_POINTS, ComplexSample),
-    Vector#(FFT_POINTS, ComplexSample)
-) FFT;
+    Vector#(points, Complex#(cmplxd)),
+    Vector#(points, Complex#(cmplxd))
+) FFT#(numeric type points, type cmplxd);
 
 // Get the appropriate twiddle factor for the given stage and index.
 // This computes the twiddle factor statically.
-function ComplexSample getTwiddle(Integer stage, Integer index, Integer points);
+function Complex#(cmplxd) getTwiddle(Integer stage, Integer index, Integer points) provisos(RealLiteral#(cmplxd));
     Integer i = ((2*index)/(2 ** (log2(points)-stage))) * (2 ** (log2(points)-stage));
     return cmplx(fromReal(cos(fromInteger(i)*pi/fromInteger(points))),
                  fromReal(-1*sin(fromInteger(i)*pi/fromInteger(points))));
@@ -24,12 +21,12 @@ endfunction
 
 // Generate a table of all the needed twiddle factors.
 // The table can be used for looking up a twiddle factor dynamically.
-typedef Vector#(FFT_LOG_POINTS, Vector#(TDiv#(FFT_POINTS, 2), ComplexSample)) TwiddleTable;
-function TwiddleTable genTwiddles();
-    TwiddleTable twids = newVector;
-    for (Integer s = 0; s < valueof(FFT_LOG_POINTS); s = s+1) begin
-        for (Integer i = 0; i < valueof(TDiv#(FFT_POINTS, 2)); i = i+1) begin
-            twids[s][i] = getTwiddle(s, i, valueof(FFT_POINTS));
+typedef Vector#(TLog#(points), Vector#(TDiv#(points, 2), Complex#(cmplxd))) TwiddleTable#(numeric type points, type cmplxd);
+function TwiddleTable#(points, cmplxd) genTwiddles()  provisos(Add#(2, a__, points), RealLiteral#(cmplxd));
+    TwiddleTable#(points, cmplxd) twids = newVector;
+    for (Integer s = 0; s < valueof(TLog#(points)); s = s+1) begin
+        for (Integer i = 0; i < valueof(TDiv#(points, 2)); i = i+1) begin
+            twids[s][i] = getTwiddle(s, i, valueof(points));
         end
     end
     return twids;
@@ -51,20 +48,20 @@ endfunction
 // corresponding to the bit-reversal of their indices.
 // The reordering can be done either as as the
 // first or last phase of the FFT transformation.
-function Vector#(FFT_POINTS, ComplexSample) bitReverse(Vector#(FFT_POINTS,ComplexSample) inVector);
-    Vector#(FFT_POINTS, ComplexSample) outVector = newVector();
-    for(Integer i = 0; i < valueof(FFT_POINTS); i = i+1) begin   
-        Bit#(FFT_LOG_POINTS) reversal = reverseBits(fromInteger(i));
+function Vector#(points, Complex#(cmplxd)) bitReverse(Vector#(points,Complex#(cmplxd)) inVector);
+    Vector#(points, Complex#(cmplxd)) outVector = newVector();
+    for(Integer i = 0; i < valueof(points); i = i+1) begin   
+        Bit#(TLog#(points)) reversal = reverseBits(fromInteger(i));
         outVector[reversal] = inVector[i];           
     end  
     return outVector;
 endfunction
 
 // 2-way Butterfly
-function Vector#(2, ComplexSample) bfly2(Vector#(2, ComplexSample) t, ComplexSample k);
-    ComplexSample m = t[1] * k;
+function Vector#(2, Complex#(cmplxd)) bfly2(Vector#(2, Complex#(cmplxd)) t, Complex#(cmplxd) k) provisos(Arith#(cmplxd));
+    Complex#(cmplxd) m = t[1] * k;
 
-    Vector#(2, ComplexSample) z = newVector();
+    Vector#(2, Complex#(cmplxd)) z = newVector();
     z[0] = t[0] + m;
     z[1] = t[0] - m; 
 
@@ -75,9 +72,10 @@ endfunction
 // permutation.
 // We pass the table of twiddles as an argument so we can look those up
 // dynamically if need be.
-function Vector#(FFT_POINTS, ComplexSample) stage_ft(TwiddleTable twiddles, Bit#(TLog#(FFT_LOG_POINTS)) stage, Vector#(FFT_POINTS, ComplexSample) stage_in);
-    Vector#(FFT_POINTS, ComplexSample) stage_temp = newVector();
-    for(Integer i = 0; i < (valueof(FFT_POINTS)/2); i = i+1) begin    
+function Vector#(points, Complex#(cmplxd)) stage_ft(TwiddleTable#(points, cmplxd) twiddles, Bit#(TLog#(TLog#(points))) stage, Vector#(points, Complex#(cmplxd)) stage_in)
+    provisos(Arith#(cmplxd), Add#(2, a__, points));
+    Vector#(points, Complex#(cmplxd)) stage_temp = newVector();
+    for(Integer i = 0; i < (valueof(points)/2); i = i+1) begin    
         Integer idx = i * 2;
         let twid = twiddles[stage][i];
         let y = bfly2(takeAt(idx, stage_in), twid);
@@ -86,42 +84,42 @@ function Vector#(FFT_POINTS, ComplexSample) stage_ft(TwiddleTable twiddles, Bit#
         stage_temp[idx+1] = y[1];
     end 
 
-    Vector#(FFT_POINTS, ComplexSample) stage_out = newVector();
-    for (Integer i = 0; i < valueof(FFT_POINTS); i = i+1) begin
-        stage_out[i] = stage_temp[permute(i, valueof(FFT_POINTS))];
+    Vector#(points, Complex#(cmplxd)) stage_out = newVector();
+    for (Integer i = 0; i < valueof(points); i = i+1) begin
+        stage_out[i] = stage_temp[permute(i, valueof(points))];
     end
     return stage_out;
 endfunction
 
-module mkCombinationalFFT (FFT);
+module mkCombinationalFFT (FFT#(points, cmplxd)) provisos(Add#(2, a__, points), Arith#(cmplxd), RealLiteral#(cmplxd), Bits#(cmplxd, b__));
 
   // Statically generate the twiddle factors table.
-  TwiddleTable twiddles = genTwiddles();
+  TwiddleTable#(points, cmplxd) twiddles = genTwiddles();
 
   // Define the stage_f function which uses the generated twiddles.
-  function Vector#(FFT_POINTS, ComplexSample) stage_f(Bit#(TLog#(FFT_LOG_POINTS)) stage, Vector#(FFT_POINTS, ComplexSample) stage_in);
+  function Vector#(points, Complex#(cmplxd)) stage_f(Bit#(TLog#(TLog#(points))) stage, Vector#(points, Complex#(cmplxd)) stage_in);
       return stage_ft(twiddles, stage, stage_in);
   endfunction
 
-  FIFO#(Vector#(FFT_POINTS, ComplexSample)) inputFIFO  <- mkFIFO(); 
-  FIFO#(Vector#(FFT_POINTS, ComplexSample)) outputFIFO <- mkFIFO(); 
+  FIFO#(Vector#(points, Complex#(cmplxd))) inputFIFO  <- mkFIFO(); 
+  FIFO#(Vector#(points, Complex#(cmplxd))) outputFIFO <- mkFIFO(); 
 
   // This rule performs fft using a big mass of combinational logic.
   rule comb_fft;
 
-    Vector#(TAdd#(1, FFT_LOG_POINTS), Vector#(FFT_POINTS, ComplexSample)) stage_data = newVector();
+    Vector#(TAdd#(1, TLog#(points)), Vector#(points, Complex#(cmplxd))) stage_data = newVector();
     stage_data[0] = inputFIFO.first();
     inputFIFO.deq();
 
-    for(Integer stage = 0; stage < valueof(FFT_LOG_POINTS); stage=stage+1) begin
+    for(Integer stage = 0; stage < valueof(TLog#(points)); stage=stage+1) begin
         stage_data[stage+1] = stage_f(fromInteger(stage), stage_data[stage]);  
     end
 
-    outputFIFO.enq(stage_data[valueof(FFT_LOG_POINTS)]);
+    outputFIFO.enq(stage_data[valueof(TLog#(points))]);
   endrule
 
   interface Put request;
-    method Action put(Vector#(FFT_POINTS, ComplexSample) x);
+    method Action put(Vector#(points, Complex#(cmplxd)) x);
         inputFIFO.enq(bitReverse(x));
     endmethod
   endinterface
@@ -130,16 +128,17 @@ module mkCombinationalFFT (FFT);
 
 endmodule
 
-module mkLinearFFT (FFT);
-    TwiddleTable twiddles = genTwiddles();
+module mkLinearFFT (FFT#(points, cmplxd)) 
+    provisos(Add#(2, a__, points), Bits#(cmplxd, b__), RealLiteral#(cmplxd), Arith#(cmplxd));
+    TwiddleTable#(points, cmplxd) twiddles = genTwiddles();
 
-    function Vector#(FFT_POINTS, ComplexSample) stage_f(Bit#(TLog#(FFT_LOG_POINTS)) stage, Vector#(FFT_POINTS, ComplexSample) stage_in);
+    function Vector#(points, Complex#(cmplxd)) stage_f(Bit#(TLog#(TLog#(points))) stage, Vector#(points, Complex#(cmplxd)) stage_in);
         return stage_ft(twiddles, stage, stage_in);
     endfunction
 
-    FIFO#(Vector#(FFT_POINTS, ComplexSample)) inputFIFO  <- mkFIFO(); 
-    FIFO#(Vector#(FFT_POINTS, ComplexSample)) outputFIFO <- mkFIFO(); 
-    Vector#(TAdd#(1, FFT_LOG_POINTS), Reg#(Maybe#(Vector#(FFT_POINTS, ComplexSample)))) stage_data <- replicateM(mkRegU);
+    FIFO#(Vector#(points, Complex#(cmplxd))) inputFIFO  <- mkFIFO(); 
+    FIFO#(Vector#(points, Complex#(cmplxd))) outputFIFO <- mkFIFO(); 
+    Vector#(TAdd#(1, TLog#(points)), Reg#(Maybe#(Vector#(points, Complex#(cmplxd))))) stage_data <- replicateM(mkRegU);
 
     rule linear_fft;
         // Field `notEmpty' is not in the type `FIFO::FIFO' which was derived for this expression
@@ -150,20 +149,20 @@ module mkLinearFFT (FFT);
         //     stage_data[0] <= tagged Invalid;
         // end
         
-        for (Integer stage = 0; stage < valueOf(FFT_LOG_POINTS); stage = stage+1) begin
+        for (Integer stage = 0; stage < valueOf(TLog#(points)); stage = stage+1) begin
             case (stage_data[stage]) matches
                 tagged Invalid: stage_data[stage+1] <= tagged Invalid;
                 tagged Valid .x: stage_data[stage+1] <= tagged Valid stage_f(fromInteger(stage), x);
             endcase
         end
 
-        case (stage_data[valueOf(FFT_LOG_POINTS)]) matches
+        case (stage_data[valueOf(TLog#(points))]) matches
             tagged Valid .x: outputFIFO.enq(x);
         endcase
     endrule
 
     interface Put request;
-        method Action put(Vector#(FFT_POINTS, ComplexSample) x);
+        method Action put(Vector#(points, Complex#(cmplxd)) x);
             inputFIFO.enq(bitReverse(x));
         endmethod
     endinterface
@@ -171,19 +170,21 @@ module mkLinearFFT (FFT);
     interface Get response = toGet(outputFIFO);
 endmodule
 
-module mkCircularFFT (FFT);
-    TwiddleTable twiddles = genTwiddles();
+module mkCircularFFT (FFT#(points, cmplxd))  
+    provisos(Add#(2, a__, points), Bits#(cmplxd, b__), RealLiteral#(cmplxd), Arith#(cmplxd));
 
-    function Vector#(FFT_POINTS, ComplexSample) stage_f(Bit#(TLog#(FFT_LOG_POINTS)) stage, Vector#(FFT_POINTS, ComplexSample) stage_in);
+    TwiddleTable#(points, cmplxd) twiddles = genTwiddles();
+
+    function Vector#(points, Complex#(cmplxd)) stage_f(Bit#(TLog#(TLog#(points))) stage, Vector#(points, Complex#(cmplxd)) stage_in);
         return stage_ft(twiddles, stage, stage_in);
     endfunction
 
-    FIFO#(Vector#(FFT_POINTS, ComplexSample)) inputFIFO  <- mkFIFO(); 
-    FIFO#(Vector#(FFT_POINTS, ComplexSample)) outputFIFO <- mkFIFO(); 
-    Vector#(FFT_POINTS, ComplexSample) fft_in;
-    // Vector#(FFT_POINTS, Reg#(ComplexSample)) regs <- replicateM(mkRegU);
-    Reg#(Vector#(FFT_POINTS, ComplexSample)) regs <- mkRegU;
-    Reg#(Bit#(TLog#(FFT_LOG_POINTS))) stage_cnt <- mkReg(0);
+    FIFO#(Vector#(points, Complex#(cmplxd))) inputFIFO  <- mkFIFO(); 
+    FIFO#(Vector#(points, Complex#(cmplxd))) outputFIFO <- mkFIFO(); 
+    Vector#(points, Complex#(cmplxd)) fft_in;
+    // Vector#(points, Reg#(Complex#(cmplxd))) regs <- replicateM(mkRegU);
+    Reg#(Vector#(points, Complex#(cmplxd))) regs <- mkRegU;
+    Reg#(Bit#(TLog#(TLog#(points)))) stage_cnt <- mkReg(0);
     
     if (stage_cnt == 0) begin
         fft_in = inputFIFO.first;
@@ -199,18 +200,18 @@ module mkCircularFFT (FFT);
         inputFIFO.deq();
     endrule
 
-    rule compute ((stage_cnt != 0) && (stage_cnt != fromInteger(valueOf(FFT_LOG_POINTS)-1)));
+    rule compute ((stage_cnt != 0) && (stage_cnt != fromInteger(valueOf(TLog#(points))-1)));
         regs <= fft_out;
         stage_cnt <= stage_cnt+1;
     endrule
 
-    rule out (stage_cnt == fromInteger(valueOf(FFT_LOG_POINTS)-1));
+    rule out (stage_cnt == fromInteger(valueOf(TLog#(points))-1));
         outputFIFO.enq(fft_out);
         stage_cnt <= 0;
     endrule
 
     interface Put request;
-        method Action put(Vector#(FFT_POINTS, ComplexSample) x);
+        method Action put(Vector#(points, Complex#(cmplxd)) x);
             inputFIFO.enq(bitReverse(x));
         endmethod
     endinterface
@@ -219,8 +220,10 @@ module mkCircularFFT (FFT);
 endmodule
 
 // Wrapper around The FFT module we actually want to use
-module mkFFT (FFT);
-    FFT fft <- mkCircularFFT();
+module mkFFT (FFT#(points, cmplxd)) 
+provisos(Add#(2, a__, points), Bits#(cmplxd, b__), RealLiteral#(cmplxd), Arith#(cmplxd));
+
+    FFT#(points, cmplxd) fft <- mkCircularFFT();
     
     interface Put request = fft.request;
     interface Get response = fft.response;
@@ -228,21 +231,22 @@ endmodule
 
 // Inverse FFT, based on the mkFFT module.
 // ifft[k] = fft[N-k]/N
-module mkIFFT (FFT);
+module mkIFFT (FFT#(points, cmplxd)) 
+provisos(Add#(2, a__, points), Bits#(cmplxd, b__), RealLiteral#(cmplxd), Arith#(cmplxd), Bitwise#(cmplxd));
 
-    FFT fft <- mkFFT();
-    FIFO#(Vector#(FFT_POINTS, ComplexSample)) outfifo <- mkFIFO();
+    FFT#(points, cmplxd) fft <- mkFFT();
+    FIFO#(Vector#(points, Complex#(cmplxd))) outfifo <- mkFIFO();
 
-    Integer n = valueof(FFT_POINTS);
-    Integer lgn = valueof(FFT_LOG_POINTS);
+    Integer n = valueof(points);
+    Integer lgn = valueof(TLog#(points));
 
-    function ComplexSample scaledown(ComplexSample x);
+    function Complex#(cmplxd) scaledown(Complex#(cmplxd) x);
         return cmplx(x.rel >> lgn, x.img >> lgn);
     endfunction
 
     rule inversify (True);
         let x <- fft.response.get();
-        Vector#(FFT_POINTS, ComplexSample) rx = newVector;
+        Vector#(points, Complex#(cmplxd)) rx = newVector;
 
         for (Integer i = 0; i < n; i = i+1) begin
             rx[i] = x[(n - i)%n];
