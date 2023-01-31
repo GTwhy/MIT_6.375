@@ -77,26 +77,46 @@ module mkPitchAdjustTest (Empty);
     to2[6] = cmplxmp(1.000000, tophase(0.000000));
     to2[7] = cmplxmp(0.000000, tophase(0.000000));
 
+    // Vector#(8, ComplexMP#(16, 16, 16)) ti3 = newVector;
+    // ti3[0] = cmplxmp(0.000000, tophase(0.000000));
+    // ti3[1] = cmplxmp(6.395666, tophase(2.455808));
+    // ti3[2] = cmplxmp(9.899495, tophase(-2.356194));
+    // ti3[3] = cmplxmp(14.801873, tophase(-1.229828));
+    // ti3[4] = cmplxmp(14.000000, tophase(0.000000));
+    // ti3[5] = cmplxmp(14.801873, tophase(1.229828));
+    // ti3[6] = cmplxmp(9.899495, tophase(2.356194));
+    // ti3[7] = cmplxmp(6.395666, tophase(-2.455808));
+
+    // Vector#(8, ComplexMP#(16, 16, 16)) to3 = newVector;
+    // to3[0] = cmplxmp(0.000000, tophase(0.000000));
+    // to3[1] = cmplxmp(0.000000, tophase(0.000000));
+    // to3[2] = cmplxmp(6.395666, tophase(-1.371570));
+    // to3[3] = cmplxmp(0.000000, tophase(0.000000));
+    // to3[4] = cmplxmp(9.899495, tophase(1.570796));
+    // to3[5] = cmplxmp(0.000000, tophase(0.000000));
+    // to3[6] = cmplxmp(14.801873, tophase(-2.4597));
+    // to3[7] = cmplxmp(0.000000, tophase(0.000000));
+
     Vector#(8, ComplexMP#(16, 16, 16)) ti3 = newVector;
-    ti3[0] = cmplxmp(0.000000, tophase(0.000000));
-    ti3[1] = cmplxmp(6.395666, tophase(2.455808));
-    ti3[2] = cmplxmp(9.899495, tophase(-2.356194));
-    ti3[3] = cmplxmp(14.801873, tophase(-1.229828));
-    ti3[4] = cmplxmp(14.000000, tophase(0.000000));
-    ti3[5] = cmplxmp(14.801873, tophase(1.229828));
-    ti3[6] = cmplxmp(9.899495, tophase(2.356194));
-    ti3[7] = cmplxmp(6.395666, tophase(-2.455808));
+    ti3[0] = cmplxmp(2.000000, tophase(3.141593));
+    ti3[1] = cmplxmp(1.847759, tophase(-1.963495));
+    ti3[2] = cmplxmp(1.414214, tophase(-0.785398));
+    ti3[3] = cmplxmp(0.765367, tophase(0.392699));
+    ti3[4] = cmplxmp(0.000000, tophase(0.000000));
+    ti3[5] = cmplxmp(0.765367, tophase(-0.392699));
+    ti3[6] = cmplxmp(1.414214, tophase(0.785398));
+    ti3[7] = cmplxmp(1.847759, tophase(1.963495));
 
     Vector#(8, ComplexMP#(16, 16, 16)) to3 = newVector;
-    to3[0] = cmplxmp(0.000000, tophase(0.000000));
+    to3[0] = cmplxmp(2.000000, tophase(-0.000000));
     to3[1] = cmplxmp(0.000000, tophase(0.000000));
-    to3[2] = cmplxmp(6.395666, tophase(-1.371570));
+    to3[2] = cmplxmp(1.847759, tophase(2.356194));
     to3[3] = cmplxmp(0.000000, tophase(0.000000));
-    to3[4] = cmplxmp(9.899495, tophase(1.570796));
+    to3[4] = cmplxmp(1.414214, tophase(-1.570796));
     to3[5] = cmplxmp(0.000000, tophase(0.000000));
-    to3[6] = cmplxmp(14.801873, tophase(-2.4597));
+    to3[6] = cmplxmp(0.765367, tophase(0.785398));
     to3[7] = cmplxmp(0.000000, tophase(0.000000));
-
+    
     rule f0 (feed == 0); dofeed(ti1); endrule
     rule f1 (feed == 1); dofeed(ti2); endrule
     rule f2 (feed == 2); dofeed(ti3); endrule
