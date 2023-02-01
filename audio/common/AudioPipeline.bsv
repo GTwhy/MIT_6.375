@@ -24,6 +24,7 @@ typedef 16 F_SIZE;
 typedef 16 P_SIZE;
 typedef 2 FACTOR;
 
+(*synthesize*)
 module mkAudioPipeline(AudioProcessor);
 
     Vector#(N, Sample) init_val = replicate(0);
