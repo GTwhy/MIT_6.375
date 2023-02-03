@@ -22,10 +22,9 @@ typedef 2 S;
 typedef 16 I_SIZE;
 typedef 16 F_SIZE;
 typedef 16 P_SIZE;
-typedef 2 FACTOR;
 
 (*synthesize*)
-module mkAudioPipeline(AudioProcessor);
+module mkAudioPipeline(SettableAudioProcessor#(I_SIZE, F_SIZE));
 
     Vector#(N, Sample) init_val = replicate(0);
     AudioProcessor fir <- mkFIRFilter(c);
@@ -33,8 +32,8 @@ module mkAudioPipeline(AudioProcessor);
     OverSampler#(S, N, Sample) sampler <- mkOverSampler(init_val);
     FFT#(N,FixedPoint#(I_SIZE, P_SIZE)) fft <- mkFFT();
     ToMP#(N, I_SIZE, F_SIZE, P_SIZE) toMP <- mkToMP();
-    FixedPoint#(isize, fsize) factor = fromInteger(valueOf(FACTOR));
-    PitchAdjust#(N, I_SIZE, F_SIZE, P_SIZE) adjust <- mkPitchAdjust(valueOf(S), factor);
+    SettablePitchAdjust#(N, I_SIZE, F_SIZE, P_SIZE) pitch <- mkPitchAdjust(valueOf(S));
+    PitchAdjust#(N, I_SIZE, F_SIZE, P_SIZE) adjust = pitch.adjust;
     FromMP#(N, I_SIZE, F_SIZE, P_SIZE) fromMP <- mkFromMP();
     FFT#(N,FixedPoint#(I_SIZE, P_SIZE)) ifft <- mkIFFT();
     Overlayer#(N, S, Sample) overlayer <- mkOverlayer(init_val);
@@ -85,14 +84,21 @@ module mkAudioPipeline(AudioProcessor);
         splitter.request.put(x);
     endrule
     
-    method Action putSampleInput(Sample x);
-        fir.putSampleInput(x);
-    endmethod
+    interface AudioProcessor audioProcessor;
+        method Action putSampleInput(Sample x);
+            fir.putSampleInput(x);
+        endmethod
 
-    method ActionValue#(Sample) getSampleOutput();
-        let x <- splitter.response.get();
-        return x;
-    endmethod
+        method ActionValue#(Sample) getSampleOutput();
+            let x <- splitter.response.get();
+            return x;
+        endmethod
+    endinterface
 
+    interface Put setFactor;
+        method Action put(FixedPoint#(I_SIZE, F_SIZE) x);
+            pitch.setFactor.put(x);
+        endmethod
+    endinterface
 endmodule
 
